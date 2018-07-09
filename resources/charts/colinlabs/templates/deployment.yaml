@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ template "colinlabs.fullname" . }}
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: {{ .Release.Name }}
+    chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+    release: {{ template "colinlabs.name" .  }}
+    heritage: {{ .Release.Service }}
+    {{- range $key, $value := .Values.labels }}
+    {{ $key }}: {{ $value | quote }}
+    {{- end }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}
+      release: {{ template "colinlabs.name" .  }}
+
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}
+        release: {{ template "colinlabs.name" .  }}
+        {{- range $key, $value := .Values.labels }}
+        {{ $key }}: {{ $value | quote }}
+        {{- end }}        
+    spec:
+      containers:
+      - name: {{ .Release.Name }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+      {{- if .Values.app.runArgs }}
+        args:
+      {{- range .Values.app.runArgs }}
+        - {{ . | quote}}
+      {{- end }}
+      {{- end }}
+        env:
+        {{- range $key, $value := .Values.app.runEnv }}
+        - name: {{ $key | quote }}
+          value: {{ $value | quote }}
+        {{- end }}
+        ports:
+        - containerPort: {{ .Values.service.internalPort }}
+        livenessProbe:
+          tcpSocket:
+            port: {{ .Values.service.internalPort }}
+          # httpGet:
+          #   path: /health
+          #   port: {{ .Values.service.internalPort }}
+          initialDelaySeconds: 30
+          timeoutSeconds: 5
+        readinessProbe:
+          tcpSocket:
+            port: {{ .Values.service.internalPort }}
+          # httpGet:
+          #   path: /health
+          #   port: {{ .Values.service.internalPort }}
+          initialDelaySeconds: 30
+          timeoutSeconds: 5
+        resources:
+{{ toYaml .Values.resources | indent 12 }}
+      imagePullSecrets:
+      - name: {{ .Values.image.pullSecret}}
+    {{- if .Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml .Values.nodeSelector | indent 8 }}
+    {{- end }}

@@ -1,0 +1,51 @@
+import io.colin.piper.Constants
+def gconst= new Constants()
+
+properties([
+    gitLabConnection(gconst.GITLAB_CONN),
+    parameters([
+        choice(choices: gconst.DEPLOY_ENV, description: 'deploy environment', name: 'DEPLOY_ENV'),
+        choice(choices: gconst.DEPLOY_TYPE, description: 'deploy type', name: 'DEPLOY_TYPE'),
+        booleanParam(defaultValue: false, description: 'update config', name: 'UPDATE_CONFIG'),
+        booleanParam(defaultValue: true, description: 'maven package and docker image', name: 'STEP_BUILD'),
+        ]),
+ ])
+
+// check before build
+pipeCheck.preCheck()
+
+// notify start job
+pipeDingTalkNotify.start()
+
+def gitinfo
+def config 
+
+stage("Checkout") {
+    gitinfo = checkout scm
+    config = pipeParseConfig(env.APP_NAME, gitinfo)
+    pipeCheck.configCheck(config)
+
+}
+
+if (env.DEPLOY_ENV == "prod") {
+    pipeStage("Approve") {
+        pipeApprove("test")
+    }
+}
+
+pipeStage("maven") {
+    pipeBuild.maven(config.app.build_cmd)
+}
+
+pipeStage("docker") {
+    buildArgs = """\
+        --build-arg APP=${config.app.name} \
+        --build-arg GIT_COMMIT=${config.GIT_COMMIT} \
+        --build-arg GIT_URL=${config.GIT_URL} \
+    """.trim()
+    pipeBuild.docker(config, buildArgs)
+}
+
+pipeStage("Deploy ${DEPLOY_ENV}") {
+    pipeDeploy.helm(config) 
+}
